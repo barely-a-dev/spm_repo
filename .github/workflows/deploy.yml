@@ -1,0 +1,90 @@
+name: Build and Deploy Package Repository
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v3
+
+      - name: Create package index
+        run: |
+          mkdir -p _site
+          # Create packages directory
+          mkdir -p _site/packages
+          
+          # Copy all package files and their .ver files to the packages directory
+          for f in *; do
+            if [ -f "$f" ] && [ -f "$f.ver" ]; then
+              cp "$f" "_site/packages/"
+              cp "$f.ver" "_site/packages/"
+            fi
+          done
+          
+          # Generate index.html with package listing
+          cat > _site/index.html << EOF
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Package Repository</title>
+            </head>
+            <body>
+              <h1>Available Packages</h1>
+              <ul>
+              $(for f in _site/packages/*; do
+                if [ -f "$f" ] && [[ ! "$f" == *.ver ]]; then
+                  filename=\$(basename "$f")
+                  version=\$(cat "_site/packages/$filename.ver")
+                  echo "<li><a href='/packages/$filename'>$filename</a> (Version: $version)</li>"
+                fi
+              done)
+              </ul>
+            </body>
+          </html>
+          EOF
+          
+          # Create a simple API endpoint for package retrieval
+          cat > _site/package << EOF
+          <?php
+          \$package = isset(\$_GET['name']) ? \$_GET['name'] : '';
+          if (!empty(\$package)) {
+              \$file = "packages/" . basename(\$package);
+              if (file_exists(\$file) && file_exists(\$file . ".ver")) {
+                  header('Content-Type: application/octet-stream');
+                  header('Content-Disposition: attachment; filename="' . basename(\$package) . '"');
+                  readfile(\$file);
+                  exit;
+              }
+          }
+          http_response_code(404);
+          echo "Package not found";
+          EOF
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v2
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2
