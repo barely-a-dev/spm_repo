@@ -22,7 +22,7 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v3
 
-            - name: Create package index
+      - name: Create package index
         run: |
           mkdir -p _site
           # Create packages directory
